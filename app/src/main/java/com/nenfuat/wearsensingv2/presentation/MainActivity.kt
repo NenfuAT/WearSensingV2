@@ -6,8 +6,10 @@
 
 package com.nenfuat.wearsensingv2.presentation
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -17,6 +19,7 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -42,6 +45,7 @@ import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.compose.NavHost
@@ -90,6 +94,18 @@ class MainActivity : ComponentActivity() , SensorEventListener {
     lateinit var heartrateCsv:List<String>
     lateinit var lightCsv:List<String>
 
+
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                // パーミッションが許可された場合
+
+            } else {
+                // パーミッションが拒否された場合
+                Log.e("MainActivity", "心拍センサーのパーミッションが拒否されました。")
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
 
@@ -130,16 +146,27 @@ class MainActivity : ComponentActivity() , SensorEventListener {
         GyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         HeartRateSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
         LightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+        // パーミッションの確認とリクエスト
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BODY_SENSORS) == PackageManager.PERMISSION_GRANTED) {
+            // パーミッションが既に許可されている場合
+
+        } else {
+            // パーミッションをリクエスト
+            requestPermissionLauncher.launch(Manifest.permission.BODY_SENSORS)
+        }
     }
 
     override fun onSensorChanged(p0: SensorEvent?) {
         TODO("Not yet implemented")
+        //別の場所でオーバーライドしてる
     }
 
 
     override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
 
     }
+
+    //こっからUI系
     @Composable
     fun TitleScreen(navController: NavController) {
         Log.d("Screen","Title")
@@ -347,10 +374,42 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                     }
                 }
                 if (globalVariable.isHeartRateSensorEnabled){
-                    item { reusableComponents.MultiView(sensor = "心拍センサ", sensorDataArray = heartrateDataArray, modifier = Modifier) }
+                    item { reusableComponents.MultiView(sensor = "心拍センサ", sensorDataArray = heartrateDataArray, modifier = Modifier)
+                        LaunchedEffect(Unit) {
+                            sensorManager.registerListener(object : SensorEventListener {
+                                override fun onSensorChanged(event: SensorEvent?) {
+                                    if (event != null) {
+                                        // 加速度センサーのデータを更新
+                                        heartrateDataArray[0].value = ""
+                                        heartrateDataArray[1].value = "心拍: ${event.values[0]}"
+                                        heartrateDataArray[2].value = ""
+                                    }
+                                }
+
+                                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                                }
+                            }, HeartRateSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                        }
+                    }
                 }
                 if (globalVariable.isLightSensorEnabled){
-                    item { reusableComponents.MultiView(sensor = "照度センサ", sensorDataArray = lightDataArray,modifier = Modifier) }
+                    item { reusableComponents.MultiView(sensor = "照度センサ", sensorDataArray = lightDataArray,modifier = Modifier)
+                        LaunchedEffect(Unit) {
+                            sensorManager.registerListener(object : SensorEventListener {
+                                override fun onSensorChanged(event: SensorEvent?) {
+                                    if (event != null) {
+                                        // 加速度センサーのデータを更新
+                                        lightDataArray[0].value = ""
+                                        lightDataArray[1].value = "照度: ${event.values[0]}"
+                                        lightDataArray[2].value = ""
+                                    }
+                                }
+
+                                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                                }
+                            }, LightSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                        }
+                    }
                 }
                 item {
                     Chip(

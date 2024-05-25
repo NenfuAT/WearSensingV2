@@ -33,8 +33,11 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -53,6 +56,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.wear.compose.material.AutoCenteringParams
 import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
@@ -66,13 +70,17 @@ import androidx.wear.compose.material.scrollAway
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.WearNavigator
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import com.nenfuat.wearsensingv2.BuildConfig
 import com.nenfuat.wearsensingv2.R
 import com.nenfuat.wearsensingv2.presentation.theme.WearSensingV2Theme
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 enum class Nav {
     TopScreen,
     SensorSelectScreen,
-    SensingScreen
+    SensingScreen,
+    SettingScreen
 }
 
 class MainActivity : ComponentActivity() , SensorEventListener {
@@ -83,6 +91,7 @@ class MainActivity : ComponentActivity() , SensorEventListener {
     private var HeartRateSensor: Sensor? = null
     private var LightSensor: Sensor? = null
     val globalvariable = GlobalVariable.getInstance()
+    val connectAPI=ConnectAPI()
     //センサデータ表示用
     lateinit var accDataArray: Array<MutableState<String>>
     lateinit var gyroDataArray: Array<MutableState<String>>
@@ -136,10 +145,14 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                     composable(route = Nav.SensingScreen.name) {
                         SensingScreen(navController = navController, globalVariable = globalvariable)
                     }
+                    composable(route = Nav.SettingScreen.name) {
+                        SettingScreen(navController = navController)
+                    }
                 }
             }
 
         }
+
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         AccSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
@@ -169,7 +182,6 @@ class MainActivity : ComponentActivity() , SensorEventListener {
     //こっからUI系
     @Composable
     fun TitleScreen(navController: NavController) {
-        Log.d("Screen","Title")
         val listState = rememberScalingLazyListState()
         Scaffold(
             timeText = {
@@ -231,10 +243,24 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                         },
                     )
                 }
+                item {
+                    Chip(
+                        modifier = contentModifier,
+                        onClick = {
+                            navController.navigate(Nav.SettingScreen.name)
+                        },
+                        label = {
+                            Text(
+                                text = "設定",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                    )
+                }
             }
         }
     }
-
 
     @Composable
     fun WearApp(navController: NavController,globalVariable: GlobalVariable) {
@@ -302,6 +328,112 @@ class MainActivity : ComponentActivity() , SensorEventListener {
             }
         }
     }
+
+    @Composable
+    fun SettingScreen(navController: NavController){
+        val listState = rememberScalingLazyListState()
+        // バケットリストの状態を保持
+        var buckets by remember { mutableStateOf<List<String>?>(null) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        Scaffold(
+            timeText = {
+                TimeText(modifier = Modifier.scrollAway(listState))
+            },
+            vignette = {
+                Vignette(vignettePosition = VignettePosition.TopAndBottom)
+            },
+            positionIndicator = {
+                PositionIndicator(
+                    scalingLazyListState = listState
+                )
+            }
+        ) {
+            // コルーチンを起動してAPI呼び出しを実行
+            val scope = rememberCoroutineScope()
+            LaunchedEffect(Unit) {
+                scope.launch {
+                    try {
+                        val result = connectAPI.getBuckets()
+                        buckets = result
+                    } catch (e: Exception) {
+                        errorMessage = "Failed to fetch buckets"
+                        e.printStackTrace()
+                    }
+                }
+            }
+            // バケットリストを表示
+            if (buckets != null) {
+                val contentModifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+
+                ScalingLazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    autoCentering = AutoCenteringParams(itemIndex = 0),
+                    state = listState
+                ) {
+
+
+                    val reusableComponents = ReusableComponents()
+                    item {
+                        Text("保存先バケット選択", fontSize = 20.sp)
+                    }
+
+                    for (bucket in buckets!!) {
+                        item {
+                            Chip(
+                                modifier = contentModifier,
+                                onClick = {
+                                    //navController.popBackStack()
+                                },
+                                label = {
+                                    Text(
+                                        text = bucket,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                            )
+                        }
+                    }
+
+
+
+                    item {
+                        Chip(
+                            modifier = contentModifier,
+                            onClick = {
+                                navController.popBackStack()
+                            },
+                            label = {
+                                Text(
+                                    text = "戻る",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                        )
+                    }
+
+                }
+            } else if (errorMessage != null) {
+                // エラーメッセージを表示
+                Text(text = errorMessage!!)
+            } else {
+                // データの読み込み中を示すプログレスバーを表示
+                CircularProgressIndicator()
+            }
+
+
+        }
+
+
+
+
+
+
+    }
+
 
     @Composable
     fun SensingScreen(navController: NavController, globalVariable: GlobalVariable) {

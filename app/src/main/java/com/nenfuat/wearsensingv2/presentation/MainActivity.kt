@@ -1,14 +1,8 @@
-/* While this template provides a good starting point for using Wear Compose, you can always
- * take a look at https://github.com/android/wear-os-samples/tree/main/ComposeStarter and
- * https://github.com/android/wear-os-samples/tree/main/ComposeAdvanced to find the most up to date
- * changes to the libraries and their usages.
- */
-
 package com.nenfuat.wearsensingv2.presentation
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -20,27 +14,27 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,8 +43,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.NavController
-import androidx.navigation.NavOptions
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -67,14 +61,11 @@ import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import androidx.wear.compose.material.rememberScalingLazyListState
 import androidx.wear.compose.material.scrollAway
-import androidx.wear.compose.navigation.SwipeDismissableNavHost
-import androidx.wear.compose.navigation.WearNavigator
-import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
-import com.nenfuat.wearsensingv2.BuildConfig
 import com.nenfuat.wearsensingv2.R
 import com.nenfuat.wearsensingv2.presentation.theme.WearSensingV2Theme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+
 
 enum class Nav {
     TopScreen,
@@ -83,7 +74,7 @@ enum class Nav {
     SettingScreen
 }
 
-class MainActivity : ComponentActivity() , SensorEventListener {
+class MainActivity : ComponentActivity(), SensorEventListener {
     //センサマネージャ
     private lateinit var sensorManager: SensorManager
     private var AccSensor: Sensor? = null
@@ -91,18 +82,23 @@ class MainActivity : ComponentActivity() , SensorEventListener {
     private var HeartRateSensor: Sensor? = null
     private var LightSensor: Sensor? = null
     val globalvariable = GlobalVariable.getInstance()
-    val connectAPI=ConnectAPI()
+    val connectAPI = ConnectAPI()
+
     //センサデータ表示用
     lateinit var accDataArray: Array<MutableState<String>>
     lateinit var gyroDataArray: Array<MutableState<String>>
     lateinit var heartrateDataArray: Array<MutableState<String>>
     lateinit var lightDataArray: Array<MutableState<String>>
-    //csv形式の配列
-    lateinit var accCsv:List<String>
-    lateinit var gyroCsv:List<String>
-    lateinit var heartrateCsv:List<String>
-    lateinit var lightCsv:List<String>
 
+    //csv形式の配列
+    lateinit var accCsv: List<String>
+    lateinit var gyroCsv: List<String>
+    lateinit var heartrateCsv: List<String>
+    lateinit var lightCsv: List<String>
+
+    // 設定保持
+    lateinit var sharedPreferences: SharedPreferences
+    lateinit var editor: SharedPreferences.Editor
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -121,16 +117,18 @@ class MainActivity : ComponentActivity() , SensorEventListener {
         super.onCreate(savedInstanceState)
 
         setTheme(android.R.style.Theme_DeviceDefault)
-
+        sharedPreferences = getSharedPreferences("SensingAppPrefs", MODE_PRIVATE)
+        editor = sharedPreferences.edit()
         setContent {
             accDataArray = Array(3) { remember { mutableStateOf("データが取れませんでした") } }
             gyroDataArray = Array(3) { remember { mutableStateOf("データが取れませんでした") } }
-            heartrateDataArray = Array(3) { remember { mutableStateOf("データが取れませんでした") } }
-            heartrateDataArray[0].value =""
-            heartrateDataArray[2].value =""
+            heartrateDataArray =
+                Array(3) { remember { mutableStateOf("データが取れませんでした") } }
+            heartrateDataArray[0].value = ""
+            heartrateDataArray[2].value = ""
             lightDataArray = Array(3) { remember { mutableStateOf("データが取れませんでした") } }
-            lightDataArray[0].value =""
-            lightDataArray[2].value =""
+            lightDataArray[0].value = ""
+            lightDataArray[2].value = ""
 
             WearSensingV2Theme {
                 val navController = rememberNavController()
@@ -143,7 +141,10 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                         WearApp(navController = navController, globalVariable = globalvariable)
                     }
                     composable(route = Nav.SensingScreen.name) {
-                        SensingScreen(navController = navController, globalVariable = globalvariable)
+                        SensingScreen(
+                            navController = navController,
+                            globalVariable = globalvariable
+                        )
                     }
                     composable(route = Nav.SettingScreen.name) {
                         SettingScreen(navController = navController)
@@ -160,7 +161,11 @@ class MainActivity : ComponentActivity() , SensorEventListener {
         HeartRateSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
         LightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
         // パーミッションの確認とリクエスト
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BODY_SENSORS) == PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BODY_SENSORS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
             // パーミッションが既に許可されている場合
 
         } else {
@@ -170,7 +175,6 @@ class MainActivity : ComponentActivity() , SensorEventListener {
     }
 
     override fun onSensorChanged(p0: SensorEvent?) {
-        TODO("Not yet implemented")
         //別の場所でオーバーライドしてる
     }
 
@@ -182,6 +186,15 @@ class MainActivity : ComponentActivity() , SensorEventListener {
     //こっからUI系
     @Composable
     fun TitleScreen(navController: NavController) {
+        println(sharedPreferences.getString("bucket", null))
+        // 初期描画時にshouldNavigateの値を設定
+        LaunchedEffect(Unit) {
+            if (sharedPreferences.getString("bucket", null) == null) {
+                navController.navigate(Nav.SettingScreen.name)
+            }
+        }
+
+
         val listState = rememberScalingLazyListState()
         Scaffold(
             timeText = {
@@ -263,7 +276,7 @@ class MainActivity : ComponentActivity() , SensorEventListener {
     }
 
     @Composable
-    fun WearApp(navController: NavController,globalVariable: GlobalVariable) {
+    fun WearApp(navController: NavController, globalVariable: GlobalVariable) {
         val listState = rememberScalingLazyListState()
         Scaffold(
             timeText = {
@@ -312,25 +325,35 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                 item { reusableComponents.GyroToggle(contentModifier) }
                 item { reusableComponents.HeartRateToggle(contentModifier) }
                 item { reusableComponents.LightToggle(contentModifier) }
-                item { Chip(
-                    modifier = contentModifier,
-                    onClick = {
-                        navController.navigate(Nav.SensingScreen.name)
-                    },
-                    label = {
-                        Text(
-                            text = "使用センサ確定",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                )}
+                item {
+                    Chip(
+                        modifier = contentModifier,
+                        onClick = {
+                            navController.navigate(Nav.SensingScreen.name)
+                        },
+                        label = {
+                            Text(
+                                text = "使用センサ確定",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                    )
+                }
             }
         }
     }
 
     @Composable
-    fun SettingScreen(navController: NavController){
+    fun SettingScreen(navController: NavController) {
+        fun saveBucket(bucket: String, onSuccess: () -> Unit) {
+            editor.putString("bucket", bucket)
+            val commitSuccess = editor.commit()
+            if (commitSuccess) {
+                onSuccess()
+            }
+        }
+
         val listState = rememberScalingLazyListState()
         // バケットリストの状態を保持
         var buckets by remember { mutableStateOf<List<String>?>(null) }
@@ -378,13 +401,21 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                     item {
                         Text("保存先バケット選択", fontSize = 20.sp)
                     }
+                    item {
+                        Text(
+                            "現在の保存先:${sharedPreferences.getString("bucket", "")}",
+                            fontSize = 15.sp
+                        )
+                    }
 
                     for (bucket in buckets!!) {
                         item {
                             Chip(
                                 modifier = contentModifier,
                                 onClick = {
-                                    //navController.popBackStack()
+                                    saveBucket(bucket) {
+                                        navController.popBackStack()
+                                    }
                                 },
                                 label = {
                                     Text(
@@ -398,22 +429,24 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                     }
 
 
-
-                    item {
-                        Chip(
-                            modifier = contentModifier,
-                            onClick = {
-                                navController.popBackStack()
-                            },
-                            label = {
-                                Text(
-                                    text = "戻る",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                        )
+                    if (sharedPreferences.getString("bucket", null) != null) {
+                        item {
+                            Chip(
+                                modifier = contentModifier,
+                                onClick = {
+                                    navController.popBackStack()
+                                },
+                                label = {
+                                    Text(
+                                        text = "戻る",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                            )
+                        }
                     }
+
 
                 }
             } else if (errorMessage != null) {
@@ -428,15 +461,13 @@ class MainActivity : ComponentActivity() , SensorEventListener {
         }
 
 
-
-
-
-
     }
 
 
     @Composable
     fun SensingScreen(navController: NavController, globalVariable: GlobalVariable) {
+        var recordingFlag by remember { mutableStateOf(false) }
+        var saveFlag by remember { mutableStateOf(false) }
         val listState = rememberScalingLazyListState()
         Scaffold(
             timeText = {
@@ -456,17 +487,31 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                 .fillMaxWidth()
                 .padding(bottom = 8.dp)
 
+
+
             ScalingLazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 autoCentering = AutoCenteringParams(itemIndex = 0),
                 state = listState
             ) {
                 val reusableComponents = ReusableComponents()
-                println(globalVariable.isAccSensorEnabled)
+
+                item {
+                    if (recordingFlag) {
+                        Text(text = "記録中", fontSize = 15.sp)
+                    }
+                    else{
+                        Text(text = "", fontSize = 15.sp)
+                    }
+                }
                 if (globalVariable.isAccSensorEnabled) {
                     item {
                         // 加速度センサーデータの取得
-                        reusableComponents.MultiView(sensor = "加速度センサ", sensorDataArray = accDataArray, modifier = Modifier)
+                        reusableComponents.MultiView(
+                            sensor = "加速度センサ",
+                            sensorDataArray = accDataArray,
+                            modifier = Modifier
+                        )
                         LaunchedEffect(Unit) {
                             sensorManager.registerListener(object : SensorEventListener {
                                 override fun onSensorChanged(event: SensorEvent?) {
@@ -486,8 +531,13 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                     }
 
                 }
-                if (globalVariable.isGyroSensorEnabled){
-                    item { reusableComponents.MultiView(sensor = "ジャイロセンサ", sensorDataArray = gyroDataArray,modifier = Modifier)
+                if (globalVariable.isGyroSensorEnabled) {
+                    item {
+                        reusableComponents.MultiView(
+                            sensor = "ジャイロセンサ",
+                            sensorDataArray = gyroDataArray,
+                            modifier = Modifier
+                        )
                         LaunchedEffect(Unit) {
                             sensorManager.registerListener(object : SensorEventListener {
                                 override fun onSensorChanged(event: SensorEvent?) {
@@ -505,8 +555,13 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                         }
                     }
                 }
-                if (globalVariable.isHeartRateSensorEnabled){
-                    item { reusableComponents.MultiView(sensor = "心拍センサ", sensorDataArray = heartrateDataArray, modifier = Modifier)
+                if (globalVariable.isHeartRateSensorEnabled) {
+                    item {
+                        reusableComponents.MultiView(
+                            sensor = "心拍センサ",
+                            sensorDataArray = heartrateDataArray,
+                            modifier = Modifier
+                        )
                         LaunchedEffect(Unit) {
                             sensorManager.registerListener(object : SensorEventListener {
                                 override fun onSensorChanged(event: SensorEvent?) {
@@ -524,8 +579,13 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                         }
                     }
                 }
-                if (globalVariable.isLightSensorEnabled){
-                    item { reusableComponents.MultiView(sensor = "照度センサ", sensorDataArray = lightDataArray,modifier = Modifier)
+                if (globalVariable.isLightSensorEnabled) {
+                    item {
+                        reusableComponents.MultiView(
+                            sensor = "照度センサ",
+                            sensorDataArray = lightDataArray,
+                            modifier = Modifier
+                        )
                         LaunchedEffect(Unit) {
                             sensorManager.registerListener(object : SensorEventListener {
                                 override fun onSensorChanged(event: SensorEvent?) {
@@ -547,6 +607,33 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                     Chip(
                         modifier = contentModifier,
                         onClick = {
+                            if (recordingFlag){
+                                saveFlag=true
+                            }
+                            recordingFlag = !recordingFlag
+                        },
+                        label = {
+                            if (recordingFlag) {
+                                Text(
+                                    text = "記録停止",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            } else {
+                                Text(
+                                    text = "記録開始",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                        },
+                    )
+                }
+                item {
+                    Chip(
+                        modifier = contentModifier,
+                        onClick = {
                             ResetFlag(globalVariable)
                             navController.popBackStack()
                         },
@@ -560,17 +647,54 @@ class MainActivity : ComponentActivity() , SensorEventListener {
                     )
                 }
             }
+            if (saveFlag){
+                Column(modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ){
+                    Text(text = "保存しますか?")
+                    Row {
+                        Chip(
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                ResetFlag(globalVariable)
+                                navController.popBackStack()
+                            },
+                            label = {
+                                Text(
+                                    text = "YES",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                        )
+                        Chip(
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                ResetFlag(globalVariable)
+                                navController.popBackStack()
+                            },
+                            label = {
+                                Text(
+                                    text = "NO",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 
-    fun ResetFlag(globalVariable: GlobalVariable){
-        globalVariable.isAccSensorEnabled=false
-        globalVariable.isGyroSensorEnabled=false
-        globalVariable.isLightSensorEnabled=false
-        globalVariable.isHeartRateSensorEnabled=false
+    fun ResetFlag(globalVariable: GlobalVariable) {
+        globalVariable.isAccSensorEnabled = false
+        globalVariable.isGyroSensorEnabled = false
+        globalVariable.isLightSensorEnabled = false
+        globalVariable.isHeartRateSensorEnabled = false
     }
 }
-
 
 
 @Composable

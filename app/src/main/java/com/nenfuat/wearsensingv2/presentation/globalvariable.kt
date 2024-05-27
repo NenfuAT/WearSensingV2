@@ -8,6 +8,12 @@ class GlobalVariable :Application(){
     var isGyroSensorEnabled: Boolean = false
     var isHeartRateSensorEnabled: Boolean = false
     var isLightSensorEnabled: Boolean = false
+    var bucket:String?=null
+
+    var accFileName: String? = null
+    var gyroFileName: String? = null
+    var lightFileName: String? = null
+    var heartrateFileName: String? = null
 
     companion object {
         private var instance : GlobalVariable? = null

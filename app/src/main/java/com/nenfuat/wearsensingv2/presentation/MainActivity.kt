@@ -9,6 +9,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.os.Environment
 import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -22,6 +23,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -35,7 +39,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Devices
@@ -63,8 +70,13 @@ import androidx.wear.compose.material.rememberScalingLazyListState
 import androidx.wear.compose.material.scrollAway
 import com.nenfuat.wearsensingv2.R
 import com.nenfuat.wearsensingv2.presentation.theme.WearSensingV2Theme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 
 enum class Nav {
@@ -82,19 +94,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var HeartRateSensor: Sensor? = null
     private var LightSensor: Sensor? = null
     val globalvariable = GlobalVariable.getInstance()
-    val connectAPI = ConnectAPI()
+    val connectAPI = ConnectAPI(globalvariable)
 
     //センサデータ表示用
     lateinit var accDataArray: Array<MutableState<String>>
     lateinit var gyroDataArray: Array<MutableState<String>>
     lateinit var heartrateDataArray: Array<MutableState<String>>
     lateinit var lightDataArray: Array<MutableState<String>>
-
-    //csv形式の配列
-    lateinit var accCsv: List<String>
-    lateinit var gyroCsv: List<String>
-    lateinit var heartrateCsv: List<String>
-    lateinit var lightCsv: List<String>
 
     // 設定保持
     lateinit var sharedPreferences: SharedPreferences
@@ -186,7 +192,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     //こっからUI系
     @Composable
     fun TitleScreen(navController: NavController) {
-        println(sharedPreferences.getString("bucket", null))
+        //println(sharedPreferences.getString("bucket", null))
+        globalvariable.bucket=sharedPreferences.getString("bucket", null)
         // 初期描画時にshouldNavigateの値を設定
         LaunchedEffect(Unit) {
             if (sharedPreferences.getString("bucket", null) == null) {
@@ -469,6 +476,47 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         var recordingFlag by remember { mutableStateOf(false) }
         var saveFlag by remember { mutableStateOf(false) }
         val listState = rememberScalingLazyListState()
+        val accFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
+        val gyroFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
+        val lightFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
+        val heartrateFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
+        val context= LocalContext.current
+        if (globalVariable.isAccSensorEnabled && accFileStorage.value == null) {
+            println("Initializing accFileStorage")
+            globalVariable.accFileName="${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))}_acc"
+            accFileStorage.value = OtherFileStorage(context,globalVariable.accFileName?: "","acc")
+        }
+
+        if (globalVariable.isGyroSensorEnabled && gyroFileStorage.value == null) {
+            println("Initializing gyroFileStorage")
+            globalVariable.gyroFileName="${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))}_gyro"
+            gyroFileStorage.value = OtherFileStorage(context, globalVariable.gyroFileName?: "","gyro")
+        }
+        if (globalVariable.isLightSensorEnabled && lightFileStorage.value == null) {
+            println("Initializing lightFileStorage")
+            globalVariable.lightFileName="${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))}_light"
+            lightFileStorage.value = OtherFileStorage(context, globalVariable.lightFileName?: "","light")
+        }
+        if (globalVariable.isHeartRateSensorEnabled && heartrateFileStorage.value == null) {
+            println("Initializing heartrateFileStorage")
+            globalVariable.heartrateFileName="${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))}_heartrate"
+            heartrateFileStorage.value = OtherFileStorage(context, globalVariable.heartrateFileName?: "","heartrate")
+        }
+
+
+        fun CoroutineScope.sendCsv(context: Context,fileName:String,path:String) {
+            launch {
+                try {
+                    println(fileName)
+                    // sendCsv関数の呼び出し
+                    connectAPI.sendCsv(context, fileName,path)
+
+                } catch (e: Exception) {
+                    // エラーが発生したときの処理
+                    Log.e("error", e.toString())
+                }
+            }
+        }
         Scaffold(
             timeText = {
                 TimeText(modifier = Modifier.scrollAway(listState))
@@ -487,178 +535,58 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 .fillMaxWidth()
                 .padding(bottom = 8.dp)
 
-
-
-            ScalingLazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                autoCentering = AutoCenteringParams(itemIndex = 0),
-                state = listState
-            ) {
-                val reusableComponents = ReusableComponents()
-
-                item {
-                    if (recordingFlag) {
-                        Text(text = "記録中", fontSize = 15.sp)
-                    }
-                    else{
-                        Text(text = "", fontSize = 15.sp)
-                    }
-                }
-                if (globalVariable.isAccSensorEnabled) {
-                    item {
-                        // 加速度センサーデータの取得
-                        reusableComponents.MultiView(
-                            sensor = "加速度センサ",
-                            sensorDataArray = accDataArray,
-                            modifier = Modifier
-                        )
-                        LaunchedEffect(Unit) {
-                            sensorManager.registerListener(object : SensorEventListener {
-                                override fun onSensorChanged(event: SensorEvent?) {
-                                    if (event != null) {
-                                        // 加速度センサーのデータを更新
-                                        accDataArray[0].value = "X: ${event.values[0]}"
-                                        accDataArray[1].value = "Y: ${event.values[1]}"
-                                        accDataArray[2].value = "Z: ${event.values[2]}"
-                                    }
-                                }
-
-                                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-                                }
-                            }, AccSensor, SensorManager.SENSOR_DELAY_NORMAL)
-                        }
-
-                    }
-
-                }
-                if (globalVariable.isGyroSensorEnabled) {
-                    item {
-                        reusableComponents.MultiView(
-                            sensor = "ジャイロセンサ",
-                            sensorDataArray = gyroDataArray,
-                            modifier = Modifier
-                        )
-                        LaunchedEffect(Unit) {
-                            sensorManager.registerListener(object : SensorEventListener {
-                                override fun onSensorChanged(event: SensorEvent?) {
-                                    if (event != null) {
-                                        // 加速度センサーのデータを更新
-                                        gyroDataArray[0].value = "X: ${event.values[0]}"
-                                        gyroDataArray[1].value = "Y: ${event.values[1]}"
-                                        gyroDataArray[2].value = "Z: ${event.values[2]}"
-                                    }
-                                }
-
-                                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-                                }
-                            }, GyroSensor, SensorManager.SENSOR_DELAY_NORMAL)
-                        }
-                    }
-                }
-                if (globalVariable.isHeartRateSensorEnabled) {
-                    item {
-                        reusableComponents.MultiView(
-                            sensor = "心拍センサ",
-                            sensorDataArray = heartrateDataArray,
-                            modifier = Modifier
-                        )
-                        LaunchedEffect(Unit) {
-                            sensorManager.registerListener(object : SensorEventListener {
-                                override fun onSensorChanged(event: SensorEvent?) {
-                                    if (event != null) {
-                                        // 加速度センサーのデータを更新
-                                        heartrateDataArray[0].value = ""
-                                        heartrateDataArray[1].value = "心拍: ${event.values[0]}"
-                                        heartrateDataArray[2].value = ""
-                                    }
-                                }
-
-                                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-                                }
-                            }, HeartRateSensor, SensorManager.SENSOR_DELAY_NORMAL)
-                        }
-                    }
-                }
-                if (globalVariable.isLightSensorEnabled) {
-                    item {
-                        reusableComponents.MultiView(
-                            sensor = "照度センサ",
-                            sensorDataArray = lightDataArray,
-                            modifier = Modifier
-                        )
-                        LaunchedEffect(Unit) {
-                            sensorManager.registerListener(object : SensorEventListener {
-                                override fun onSensorChanged(event: SensorEvent?) {
-                                    if (event != null) {
-                                        // 加速度センサーのデータを更新
-                                        lightDataArray[0].value = ""
-                                        lightDataArray[1].value = "照度: ${event.values[0]}"
-                                        lightDataArray[2].value = ""
-                                    }
-                                }
-
-                                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-                                }
-                            }, LightSensor, SensorManager.SENSOR_DELAY_NORMAL)
-                        }
-                    }
-                }
-                item {
-                    Chip(
-                        modifier = contentModifier,
-                        onClick = {
-                            if (recordingFlag){
-                                saveFlag=true
-                            }
-                            recordingFlag = !recordingFlag
-                        },
-                        label = {
-                            if (recordingFlag) {
-                                Text(
-                                    text = "記録停止",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            } else {
-                                Text(
-                                    text = "記録開始",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                        },
-                    )
-                }
-                item {
-                    Chip(
-                        modifier = contentModifier,
-                        onClick = {
-                            ResetFlag(globalVariable)
-                            navController.popBackStack()
-                        },
-                        label = {
-                            Text(
-                                text = "戻る",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                    )
-                }
-            }
             if (saveFlag){
                 Column(modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ){
-                    Text(text = "保存しますか?")
-                    Row {
+                    Text(text = "保存しますか?", modifier = Modifier.padding(bottom = 8.dp))
+                    var pathValue by remember { mutableStateOf("") }
+
+                    val keyboardController = LocalSoftwareKeyboardController.current
+
+                    TextField(
+                        value = pathValue,
+                        onValueChange = { newValue ->
+                            pathValue = newValue
+
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth(0.8f)
+                            .padding(bottom = 8.dp),
+                        placeholder = { Text("例:root/") },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                // キーボードのDoneボタンが押されたときの処理
+                                keyboardController?.hide()
+                            }
+                        )
+                    )
+                    Row (modifier = Modifier.fillMaxWidth(0.8f)){
                         Chip(
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                ResetFlag(globalVariable)
-                                navController.popBackStack()
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    try {
+                                        if (globalVariable.isAccSensorEnabled) {
+                                            sendCsv(context, globalVariable.accFileName ?: "", pathValue)
+                                        }
+                                        if (globalVariable.isGyroSensorEnabled) {
+                                            sendCsv(context, globalVariable.gyroFileName ?: "", pathValue)
+                                        }
+                                        if (globalVariable.isLightSensorEnabled) {
+                                            sendCsv(context, globalVariable.lightFileName ?: "", pathValue)
+                                        }
+                                        if (globalVariable.isHeartRateSensorEnabled) {
+                                            sendCsv(context, globalVariable.heartrateFileName ?: "", pathValue)
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("SendCsv", "Error occurred: ${e.message}", e)
+                                    }
+                                    ResetFlag(globalVariable)
+                                    navController.popBackStack()
+                                }
                             },
                             label = {
                                 Text(
@@ -668,6 +596,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 )
                             },
                         )
+                        Box(modifier = Modifier.weight(0.2f))
                         Chip(
                             modifier = Modifier.weight(1f),
                             onClick = {
@@ -677,6 +606,178 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             label = {
                                 Text(
                                     text = "NO",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+            else{
+                ScalingLazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    autoCentering = AutoCenteringParams(itemIndex = 0),
+                    state = listState
+                ) {
+                    val reusableComponents = ReusableComponents()
+
+                    item {
+                        if (recordingFlag) {
+                            Text(text = "記録中", fontSize = 15.sp)
+                        }
+                        else{
+                            Text(text = "", fontSize = 15.sp)
+                        }
+                    }
+                    if (globalVariable.isAccSensorEnabled) {
+                        item {
+                            // 加速度センサーデータの取得
+                            reusableComponents.MultiView(
+                                sensor = "加速度センサ",
+                                sensorDataArray = accDataArray,
+                                modifier = Modifier
+                            )
+                            LaunchedEffect(Unit) {
+                                sensorManager.registerListener(object : SensorEventListener {
+                                    override fun onSensorChanged(event: SensorEvent?) {
+                                        if (event != null) {
+                                            // 加速度センサーのデータを更新
+                                            accDataArray[0].value = "X: ${event.values[0]}"
+                                            accDataArray[1].value = "Y: ${event.values[1]}"
+                                            accDataArray[2].value = "Z: ${event.values[2]}"
+                                            if (recordingFlag){
+                                                accFileStorage.value?.writeText("${System.currentTimeMillis()},${event.values[0]},${event.values[1]},${event.values[2]}")
+                                            }
+                                        }
+                                    }
+
+                                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                                    }
+                                }, AccSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                            }
+
+                        }
+
+                    }
+                    if (globalVariable.isGyroSensorEnabled) {
+                        item {
+                            reusableComponents.MultiView(
+                                sensor = "ジャイロセンサ",
+                                sensorDataArray = gyroDataArray,
+                                modifier = Modifier
+                            )
+                            LaunchedEffect(Unit) {
+                                sensorManager.registerListener(object : SensorEventListener {
+                                    override fun onSensorChanged(event: SensorEvent?) {
+                                        if (event != null) {
+                                            // センサーのデータを更新
+                                            gyroDataArray[0].value = "X: ${event.values[0]}"
+                                            gyroDataArray[1].value = "Y: ${event.values[1]}"
+                                            gyroDataArray[2].value = "Z: ${event.values[2]}"
+                                            if (recordingFlag){
+                                                gyroFileStorage.value?.writeText("${System.currentTimeMillis()},${event.values[0]},${event.values[1]},${event.values[2]}")
+                                            }
+                                        }
+                                    }
+
+                                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                                    }
+                                }, GyroSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                            }
+                        }
+                    }
+                    if (globalVariable.isHeartRateSensorEnabled) {
+                        item {
+                            reusableComponents.MultiView(
+                                sensor = "心拍センサ",
+                                sensorDataArray = heartrateDataArray,
+                                modifier = Modifier
+                            )
+                            LaunchedEffect(Unit) {
+                                sensorManager.registerListener(object : SensorEventListener {
+                                    override fun onSensorChanged(event: SensorEvent?) {
+                                        if (event != null) {
+                                            // センサーのデータを更新
+                                            heartrateDataArray[0].value = ""
+                                            heartrateDataArray[1].value = "心拍: ${event.values[0]}"
+                                            heartrateDataArray[2].value = ""
+                                            if (recordingFlag){
+                                                heartrateFileStorage.value?.writeText("${System.currentTimeMillis()},${event.values[0]}")
+                                            }
+                                        }
+                                    }
+
+                                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                                    }
+                                }, HeartRateSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                            }
+                        }
+                    }
+                    if (globalVariable.isLightSensorEnabled) {
+                        item {
+                            reusableComponents.MultiView(
+                                sensor = "照度センサ",
+                                sensorDataArray = lightDataArray,
+                                modifier = Modifier
+                            )
+                            LaunchedEffect(Unit) {
+                                sensorManager.registerListener(object : SensorEventListener {
+                                    override fun onSensorChanged(event: SensorEvent?) {
+                                        if (event != null) {
+                                            // センサーのデータを更新
+                                            lightDataArray[0].value = ""
+                                            lightDataArray[1].value = "照度: ${event.values[0]}"
+                                            lightDataArray[2].value = ""
+                                            if (recordingFlag){
+                                                lightFileStorage.value?.writeText("${System.currentTimeMillis()},${event.values[0]}")
+                                            }
+                                        }
+                                    }
+
+                                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                                    }
+                                }, LightSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                            }
+                        }
+                    }
+                    item {
+                        Chip(
+                            modifier = contentModifier,
+                            onClick = {
+                                if (recordingFlag){
+                                    saveFlag=true
+                                }
+                                recordingFlag = !recordingFlag
+                            },
+                            label = {
+                                if (recordingFlag) {
+                                    Text(
+                                        text = "記録停止",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                } else {
+                                    Text(
+                                        text = "記録開始",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                            },
+                        )
+                    }
+                    item {
+                        Chip(
+                            modifier = contentModifier,
+                            onClick = {
+                                ResetFlag(globalVariable)
+                                navController.popBackStack()
+                            },
+                            label = {
+                                Text(
+                                    text = "戻る",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )

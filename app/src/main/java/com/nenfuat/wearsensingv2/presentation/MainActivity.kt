@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ChipColors
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,6 +83,7 @@ import java.time.format.DateTimeFormatter
 enum class Nav {
     TopScreen,
     SensorSelectScreen,
+    PairingScreen,
     SensingScreen,
     SettingScreen
 }
@@ -90,6 +92,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     //センサマネージャ
     private lateinit var sensorManager: SensorManager
     private var AccSensor: Sensor? = null
+    private var AccGSensor: Sensor?=null
     private var GyroSensor: Sensor? = null
     private var HeartRateSensor: Sensor? = null
     private var LightSensor: Sensor? = null
@@ -98,6 +101,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     //センサデータ表示用
     lateinit var accDataArray: Array<MutableState<String>>
+    lateinit var accGDataArray: Array<MutableState<String>>
     lateinit var gyroDataArray: Array<MutableState<String>>
     lateinit var heartrateDataArray: Array<MutableState<String>>
     lateinit var lightDataArray: Array<MutableState<String>>
@@ -127,6 +131,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         editor = sharedPreferences.edit()
         setContent {
             accDataArray = Array(3) { remember { mutableStateOf("データが取れませんでした") } }
+            accGDataArray = Array(3) { remember { mutableStateOf("データが取れませんでした") } }
             gyroDataArray = Array(3) { remember { mutableStateOf("データが取れませんでした") } }
             heartrateDataArray =
                 Array(3) { remember { mutableStateOf("データが取れませんでした") } }
@@ -155,6 +160,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     composable(route = Nav.SettingScreen.name) {
                         SettingScreen(navController = navController)
                     }
+                    composable(route = Nav.PairingScreen.name){
+                        PairingScreen(navController=navController)
+                    }
                 }
             }
 
@@ -163,6 +171,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         AccSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+        AccGSensor=sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         GyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         HeartRateSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
         LightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
@@ -200,8 +209,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 navController.navigate(Nav.SettingScreen.name)
             }
         }
-
-
         val listState = rememberScalingLazyListState()
         Scaffold(
             timeText = {
@@ -252,7 +259,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     Chip(
                         modifier = contentModifier,
                         onClick = {
-                            //navController.navigate(Nav.SensorSelectScreen.name)
+                            navController.navigate(Nav.PairingScreen.name)
                         },
                         label = {
                             Text(
@@ -329,6 +336,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     )
                 }
                 item { reusableComponents.AccToggle(contentModifier) }
+                item { reusableComponents.AccGToggle(contentModifier) }
                 item { reusableComponents.GyroToggle(contentModifier) }
                 item { reusableComponents.HeartRateToggle(contentModifier) }
                 item { reusableComponents.LightToggle(contentModifier) }
@@ -347,6 +355,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         },
                     )
                 }
+            }
+        }
+    }
+
+
+    @Composable
+    fun RateSettingScreen(navController: NavController){
+        fun saveRate(rate:String,onSuccess: () -> Unit){
+            editor.putString("rate",rate)
+            val commitSuccess = editor.commit()
+            if (commitSuccess) {
+                onSuccess()
             }
         }
     }
@@ -470,6 +490,56 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     }
 
+    @Composable
+    fun PairingScreen(navController: NavController){
+        Column(modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center){
+            Text(text = "つけてる腕")
+            Row (modifier = Modifier.fillMaxWidth()){
+                Chip(
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+
+                    },
+                    label = {
+                        Text(
+                            text = "左手",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                )
+                Chip(
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+
+                    },
+                    label = {
+                        Text(
+                            text = "右手",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                )
+            }
+            Chip(
+                modifier = Modifier,
+                onClick = {
+                    navController.popBackStack()
+                },
+                label = {
+                    Text(
+                        text = "戻る",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+            )
+        }
+
+    }
 
     @Composable
     fun SensingScreen(navController: NavController, globalVariable: GlobalVariable) {
@@ -477,6 +547,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         var saveFlag by remember { mutableStateOf(false) }
         val listState = rememberScalingLazyListState()
         val accFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
+        val accGFileStorage=remember { mutableStateOf<OtherFileStorage?>(null) }
         val gyroFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
         val lightFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
         val heartrateFileStorage = remember { mutableStateOf<OtherFileStorage?>(null) }
@@ -485,6 +556,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             println("Initializing accFileStorage")
             globalVariable.accFileName="${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))}_acc"
             accFileStorage.value = OtherFileStorage(context,globalVariable.accFileName?: "","acc")
+        }
+
+        if (globalVariable.isAccGSensorEnabled && accGFileStorage.value == null) {
+            println("Initializing accGFileStorage")
+            globalVariable.accGFileName="${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))}_accg"
+            accGFileStorage.value = OtherFileStorage(context,globalVariable.accGFileName?: "","acc")
         }
 
         if (globalVariable.isGyroSensorEnabled && gyroFileStorage.value == null) {
@@ -572,6 +649,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                         if (globalVariable.isAccSensorEnabled) {
                                             sendCsv(context, globalVariable.accFileName ?: "", pathValue)
                                         }
+                                        if (globalVariable.isAccGSensorEnabled) {
+                                            sendCsv(context, globalVariable.accGFileName ?: "", pathValue)
+                                        }
                                         if (globalVariable.isGyroSensorEnabled) {
                                             sendCsv(context, globalVariable.gyroFileName ?: "", pathValue)
                                         }
@@ -596,21 +676,36 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 )
                             },
                         )
-                        Box(modifier = Modifier.weight(0.2f))
-                        Chip(
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                ResetFlag(globalVariable)
-                                navController.popBackStack()
-                            },
-                            label = {
-                                Text(
-                                    text = "NO",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                        )
+//                        Box(modifier = Modifier.weight(0.2f))
+//                        Chip(
+//                            modifier = Modifier.weight(1f),
+//                            onClick = {
+//                                if (globalVariable.isAccSensorEnabled) {
+//                                    File(context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).toString().plus("/").plus(globalVariable.accFileName).plus(".csv")).delete()
+//                                }
+//                                if (globalVariable.isAccGSensorEnabled) {
+//                                    File(context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).toString().plus("/").plus(globalVariable.accGFileName).plus(".csv")).delete()
+//                                }
+//                                if (globalVariable.isGyroSensorEnabled) {
+//                                    File(context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).toString().plus("/").plus(globalVariable.gyroFileName).plus(".csv")).delete()
+//                                }
+//                                if (globalVariable.isLightSensorEnabled) {
+//                                    File(context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).toString().plus("/").plus(globalVariable.lightFileName).plus(".csv")).delete()
+//                                }
+//                                if (globalVariable.isHeartRateSensorEnabled) {
+//                                    File(context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).toString().plus("/").plus(globalVariable.heartrateFileName).plus(".csv")).delete()
+//                                }
+//                                ResetFlag(globalVariable)
+//                                navController.popBackStack()
+//                            },
+//                            label = {
+//                                Text(
+//                                    text = "NO",
+//                                    maxLines = 1,
+//                                    overflow = TextOverflow.Ellipsis
+//                                )
+//                            },
+//                        )
                     }
                 }
             }
@@ -655,6 +750,36 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
                                     }
                                 }, AccSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                            }
+
+                        }
+
+                    }
+                    if (globalVariable.isAccGSensorEnabled) {
+                        item {
+                            // 加速度センサーデータの取得
+                            reusableComponents.MultiView(
+                                sensor = "加速度センサ(重力)",
+                                sensorDataArray = accGDataArray,
+                                modifier = Modifier
+                            )
+                            LaunchedEffect(Unit) {
+                                sensorManager.registerListener(object : SensorEventListener {
+                                    override fun onSensorChanged(event: SensorEvent?) {
+                                        if (event != null) {
+                                            // 加速度センサーのデータを更新
+                                            accGDataArray[0].value = "X: ${event.values[0]}"
+                                            accGDataArray[1].value = "Y: ${event.values[1]}"
+                                            accGDataArray[2].value = "Z: ${event.values[2]}"
+                                            if (recordingFlag){
+                                                accGFileStorage.value?.writeText("${System.currentTimeMillis()},${event.values[0]},${event.values[1]},${event.values[2]}")
+                                            }
+                                        }
+                                    }
+
+                                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                                    }
+                                }, AccGSensor, SensorManager.SENSOR_DELAY_NORMAL)
                             }
 
                         }
@@ -791,6 +916,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     fun ResetFlag(globalVariable: GlobalVariable) {
         globalVariable.isAccSensorEnabled = false
+        globalVariable.isAccGSensorEnabled = false
         globalVariable.isGyroSensorEnabled = false
         globalVariable.isLightSensorEnabled = false
         globalVariable.isHeartRateSensorEnabled = false

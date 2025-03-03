@@ -69,6 +69,36 @@ class ReusableComponents {
         )
     }
     @Composable
+    fun AccGToggle(modifier: Modifier = Modifier,) {
+        val globalvariable = GlobalVariable.getInstance()
+        var checked by remember { mutableStateOf(globalvariable.isAccGSensorEnabled) }
+
+        ToggleChip(
+            modifier = modifier,
+            checked = checked,
+            toggleControl = {
+                Switch(
+                    checked = checked,
+                    modifier = Modifier.semantics {
+                        this.contentDescription = if (checked) "On" else "Off"
+                    }
+                )
+            },
+            onCheckedChange = {
+                checked = it
+                globalvariable.isAccGSensorEnabled = checked
+                println(globalvariable.isAccGSensorEnabled)
+            },
+            label = {
+                Text(
+                    text = "加速度(重力加速度込み)",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        )
+    }
+    @Composable
     fun GyroToggle(modifier: Modifier = Modifier) {
         val globalvariable = GlobalVariable.getInstance()
         var checked by remember { mutableStateOf(globalvariable.isGyroSensorEnabled) }

@@ -6,9 +6,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.nenfuat.wearsensingv2.BuildConfig
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
